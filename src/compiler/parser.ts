@@ -3603,14 +3603,35 @@ namespace ts {
 
         function parseTypeParameterOfInferType() {
             const pos = getNodePos();
-            return finishNode(
-                factory.createTypeParameterDeclaration(
-                    parseIdentifier(),
-                    /*constraint*/ undefined,
-                    /*defaultType*/ undefined
-                ),
-                pos
+            const name = parseIdentifier();
+            let constraint: TypeNode | undefined;
+            let expression: Expression | undefined;
+            if (parseOptional(SyntaxKind.ExtendsKeyword)) {
+                // It's not uncommon for people to write improper constraints to a generic.  If the
+                // user writes a constraint that is an expression and not an actual type, then parse
+                // it out as an expression (so we can recover well), but report that a type is needed
+                // instead.
+                if (isStartOfType() || !isStartOfExpression()) {
+                    constraint = parseType();
+                }
+                else {
+                    // It was not a type, and it looked like an expression.  Parse out an expression
+                    // here so we recover well.  Note: it is important that we call parseUnaryExpression
+                    // and not parseExpression here.  If the user has:
+                    //
+                    //      <T extends "">
+                    //
+                    // We do *not* want to consume the `>` as we're consuming the expression for "".
+                    expression = parseUnaryExpressionOrHigher();
+                }
+            }
+            const node = factory.createTypeParameterDeclaration(
+                name,
+                constraint,
+                /*defaultType*/ undefined
             );
+            node.expression = expression;
+            return finishNode(node, pos);
         }
 
         function parseInferType(): InferTypeNode {
